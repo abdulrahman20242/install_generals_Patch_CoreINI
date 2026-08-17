@@ -1,0 +1,95 @@
+# Generals Online — Community Patch Installer
+
+Automated installer for the Command & Conquer Generals Zero Hour community-modified INI files. Downloads the archive from GitHub, extracts it, and installs it into the correct Documents path on Windows.
+
+## What it does
+
+1. Downloads `GeneralsOnlineGameData.zip` from the GitHub release
+2. Extracts the archive to a temporary folder
+3. Detects the current user's Documents path (via Windows registry, with fallback)
+4. Moves the extracted `GeneralsOnlineGameData` folder to:
+   ```
+   Documents\Command and Conquer Generals Zero Hour Data\GeneralsOnlineGameData
+   ```
+5. Verifies that `500_900_CommunityPatch_CoreINI.big` exists in the installed folder
+6. Cleans up all temporary files
+
+## Requirements
+
+- **Python 3.10+**
+- **Windows** (Documents path resolved via `winreg` with `Path.home() / "Documents"` fallback)
+- **Internet connection** for the initial download
+
+### Python packages
+
+```
+pip install requests tqdm
+```
+
+## Usage
+
+```bash
+python install_generals_Patch_CoreINI.py
+```
+
+The script prints progress for each step and prompts for confirmation if the destination folder already exists.
+
+### Example output
+
+```
+Step 1/5: Downloading mod archive...
+Downloading: 100%|████████████████| 15.2M/15.2M [00:03<00:00, 4.8MB/s]
+Step 2/5: Extracting archive...
+Step 3/5: Resolving destination path...
+Step 4/5: Moving mod files to Documents...
+Step 5/5: Verifying installation...
+✅ Verified: '500_900_CommunityPatch_CoreINI.big' exists at C:\Users\<user>\Documents\Command and Conquer Generals Zero Hour Data\GeneralsOnlineGameData\500_900_CommunityPatch_CoreINI.big
+Done.
+```
+
+## Error handling
+
+| Error | Message | Cause |
+|---|---|---|
+| `ConnectionError` | Failed to connect. Check your internet connection and retry. | No network or DNS failure |
+| `Timeout` | Download timed out. Try again later. | Server unresponsive |
+| `HTTPError` | Server returned an error: `<status_code>` | Non-200 response from GitHub |
+| `BadZipFile` | The downloaded file is not a valid ZIP archive. | Corrupted download |
+| Unexpected structure | Extracted folder structure unexpected. | Archive contents changed upstream |
+| `PermissionError` | Permission denied. Close any application using the target folder and run this script as Administrator. | Folder locked by another process |
+| Missing verification file | `❌ Error: '500_900_CommunityPatch_CoreINI.big' not found` | Incomplete extraction or corrupted archive |
+
+Temporary files are always cleaned up, even when the script exits with an error.
+
+## Testing
+
+```bash
+pip install pytest
+pytest test_install_generals_Patch_CoreINI.py -v
+```
+
+The test suite covers all functions with 18 tests across 7 test classes:
+
+| Class | Tests | What it covers |
+|---|---|---|
+| `TestDownloadFile` | 4 | Bytes written to disk; 3 network failure modes |
+| `TestExtractZip` | 2 | Valid extraction; corrupt ZIP rejection |
+| `TestResolveDocumentsFolder` | 2 | Registry path; fallback when winreg is absent |
+| `TestConfirmOverwrite` | 3 | "y", "YES" → True; "n" → False |
+| `TestMoveFolder` | 3 | Fresh move; overwrite replaces old; user decline exits |
+| `TestVerifyCoreIni` | 2 | File exists → True; file missing → False |
+| `TestCleanupTemporaryFiles` | 2 | Removes paths; handles already-deleted paths |
+
+## Project structure
+
+```
+.
+├── install_generals_Patch_CoreINI.py      # Main application
+├── test_install_generals_Patch_CoreINI.py  # Test suite (pytest)
+├── README.md
+└── .gitignore
+```
+
+## License
+
+This project downloads and installs community-created content for Command & Conquer Generals Zero Hour. The installer script itself is provided as-is.
