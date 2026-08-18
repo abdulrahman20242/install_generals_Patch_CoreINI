@@ -34,10 +34,26 @@ python install_generals_Patch_CoreINI.py
 To build a standalone `.exe`:
 
 ```bash
-pyinstaller --onefile install_generals_Patch_CoreINI.py
+pyinstaller --onefile --name GeneralsPatchInstaller install_generals_Patch_CoreINI.py
 ```
 
-The executable will be in `dist\install_generals_Patch_CoreINI.exe`.
+The executable will be in `dist\GeneralsPatchInstaller.exe`.
+
+#### Common PyInstaller options
+
+| Option | Description |
+|---|---|
+| `--onefile` | Bundle everything into a single `.exe` |
+| `--name NAME` | Set the output file name |
+| `--icon=FILE.ico` | Add a custom icon to the executable |
+| `--windowed` | Hide the console window (for GUI apps) |
+| `--add-data "src;dest"` | Include extra files (data, configs, etc.) in the bundle |
+
+Example with an icon:
+
+```bash
+pyinstaller --onefile --name GeneralsPatchInstaller --icon=app.ico install_generals_Patch_CoreINI.py
+```
 
 ## What it does
 
