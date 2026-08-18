@@ -2,6 +2,43 @@
 
 Automated installer for the Command & Conquer Generals Zero Hour community-modified INI files. Downloads the archive from GitHub, extracts it, and installs it into the correct Documents path on Windows.
 
+## Installation
+
+### Option 1: Download the executable
+
+Download `GeneralsPatchInstaller.exe` from [Releases](https://github.com/abdulrahman20242/install_generals_Patch_CoreINI/releases) and run it directly — no Python required.
+
+### Option 2: Clone and run from source
+
+```bash
+git clone https://github.com/abdulrahman20242/install_generals_Patch_CoreINI.git
+cd install_generals_Patch_CoreINI
+```
+
+Set up a virtual environment and install dependencies:
+
+```bash
+python -m venv venv
+venv\Scripts\activate        # Windows
+pip install -r requirements.txt
+```
+
+Run the installer:
+
+```bash
+python install_generals_Patch_CoreINI.py
+```
+
+### Build with PyInstaller
+
+To build a standalone `.exe`:
+
+```bash
+pyinstaller --onefile install_generals_Patch_CoreINI.py
+```
+
+The executable will be in `dist\install_generals_Patch_CoreINI.exe`.
+
 ## What it does
 
 1. Downloads `GeneralsOnlineGameData.zip` from the GitHub release
@@ -20,17 +57,7 @@ Automated installer for the Command & Conquer Generals Zero Hour community-modif
 - **Windows** (Documents path resolved via `winreg` with `Path.home() / "Documents"` fallback)
 - **Internet connection** for the initial download
 
-### Python packages
-
-```
-pip install requests tqdm
-```
-
 ## Usage
-
-```bash
-python install_generals_Patch_CoreINI.py
-```
 
 The script prints progress for each step and prompts for confirmation when a previous installation is detected (the `500_900_CommunityPatch_CoreINI.big` verification file exists in the destination).
 
@@ -64,7 +91,6 @@ Temporary files are always cleaned up, even when the script exits with an error.
 ## Testing
 
 ```bash
-pip install pytest
 pytest test_install_generals_Patch_CoreINI.py -v
 ```
 
@@ -87,6 +113,7 @@ The test suite covers all functions with 20 tests across 8 test classes:
 .
 ├── install_generals_Patch_CoreINI.py      # Main application
 ├── test_install_generals_Patch_CoreINI.py  # Test suite (pytest)
+├── requirements.txt                        # Python dependencies
 ├── README.md
 └── .gitignore
 ```
