@@ -1,4 +1,5 @@
 import io
+import shutil
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
@@ -59,6 +60,26 @@ class TestDownloadFile:
                 mod.download_file("https://example.com/file.zip", Path("/x"))
 
 
+class TestDownloadArchiveOrExit:
+    @pytest.mark.parametrize(
+        "exception",
+        [
+            requests.ConnectionError("no route"),
+            requests.Timeout("timed out"),
+            requests.HTTPError(response=requests.Response()),
+        ],
+        ids=["connection", "timeout", "http_error"],
+    )
+    def test_exits_on_network_error(self, exception):
+        with (
+            patch.object(mod, "download_file", side_effect=exception),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            mod.download_archive_or_exit(Path("/fake.zip"))
+
+        assert exc_info.value.code == 1
+
+
 class TestExtractZip:
     def test_creates_inner_folder_with_files(self, tmp_path, fake_zip):
         mod.extract_zip(fake_zip, tmp_path)
@@ -74,6 +95,35 @@ class TestExtractZip:
             mod.extract_zip(corrupt, tmp_path)
 
 
+class TestExtractArchiveOrExit:
+    def test_exits_on_corrupt_zip(self):
+        with (
+            patch.object(mod, "extract_zip", side_effect=zipfile.BadZipFile),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            mod.extract_archive_or_exit(Path("/fake.zip"), Path("/tmp"))
+
+        assert exc_info.value.code == 1
+
+    def test_exits_when_expected_folder_missing(self, tmp_path):
+        with (
+            patch.object(mod, "extract_zip"),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            mod.extract_archive_or_exit(Path("/fake.zip"), tmp_path)
+
+        assert exc_info.value.code == 1
+
+    def test_returns_extraction_target_on_success(self, tmp_path):
+        mod_folder = tmp_path / mod.MOD_FOLDER_NAME
+        mod_folder.mkdir()
+
+        with patch.object(mod, "extract_zip"):
+            result = mod.extract_archive_or_exit(Path("/fake.zip"), tmp_path)
+
+        assert result == mod_folder
+
+
 class _FakeRegistryKey:
     def __init__(self, path):
         self._path = path
@@ -83,9 +133,6 @@ class _FakeRegistryKey:
 
     def __exit__(self, *args):
         pass
-
-    def QueryValueEx(self, _subkey):
-        return (self._path, 0)
 
 
 class TestResolveDocumentsFolder:
@@ -112,6 +159,20 @@ class TestResolveDocumentsFolder:
             result = mod.resolve_documents_folder()
 
         assert result == Path(fake_path)
+
+    def test_falls_back_to_home_when_registry_key_missing(self):
+        def _open_key_raises(*_a, **_kw):
+            raise OSError("registry key missing")
+
+        fake_winreg = type("FakeWinreg", (), {
+            "HKEY_CURRENT_USER": 0,
+            "OpenKey": staticmethod(_open_key_raises),
+        })()
+
+        with patch.dict("sys.modules", {"winreg": fake_winreg}):
+            result = mod.resolve_documents_folder()
+
+        assert result == Path.home() / "Documents"
 
 
 class TestConfirmFileOverwrite:
@@ -161,6 +222,33 @@ class TestMoveFolder:
         assert not (result / "old_file.txt").exists()
 
 
+class TestMoveInstallationOrExit:
+    @pytest.mark.parametrize(
+        "exception",
+        [
+            PermissionError("denied"),
+            shutil.Error([("src", "dst", "error")]),
+        ],
+        ids=["permission", "shutil"],
+    )
+    def test_exits_on_move_error(self, exception):
+        with (
+            patch.object(mod, "move_folder", side_effect=exception),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            mod.move_installation_or_exit(Path("/src"), Path("/dst"))
+
+        assert exc_info.value.code == 1
+
+    def test_returns_move_result_on_success(self, tmp_path):
+        expected = tmp_path / "result"
+
+        with patch.object(mod, "move_folder", return_value=expected):
+            result = mod.move_installation_or_exit(Path("/src"), Path("/dst"))
+
+        assert result == expected
+
+
 class TestCoreIniAlreadyInstalled:
     @patch.object(mod, "resolve_documents_folder")
     def test_returns_true_when_big_file_present(self, mock_resolve, tmp_path):
@@ -191,6 +279,30 @@ class TestCoreIniAlreadyInstalled:
         mock_resolve.return_value = tmp_path
 
         assert mod.core_ini_already_installed() is False
+
+
+class TestConfirmExistingInstallation:
+    @patch.object(mod, "confirm_file_overwrite")
+    @patch.object(mod, "core_ini_already_installed", return_value=False)
+    def test_no_prompt_when_not_installed(self, mock_installed, mock_overwrite):
+        mod.confirm_existing_installation()
+
+        mock_overwrite.assert_not_called()
+
+    @patch.object(mod, "confirm_file_overwrite", return_value=True)
+    @patch.object(mod, "core_ini_already_installed", return_value=True)
+    def test_continues_when_user_confirms(self, mock_installed, mock_overwrite):
+        mod.confirm_existing_installation()
+
+        mock_overwrite.assert_called_once()
+
+    @patch.object(mod, "confirm_file_overwrite", return_value=False)
+    @patch.object(mod, "core_ini_already_installed", return_value=True)
+    def test_exits_when_user_declines(self, mock_installed, mock_overwrite):
+        with pytest.raises(SystemExit) as exc_info:
+            mod.confirm_existing_installation()
+
+        assert exc_info.value.code == 0
 
 
 class TestVerifyCoreIni:
