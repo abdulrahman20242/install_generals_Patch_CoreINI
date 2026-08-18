@@ -32,7 +32,7 @@ pip install requests tqdm
 python install_generals_Patch_CoreINI.py
 ```
 
-The script prints progress for each step and prompts for confirmation if the destination folder already exists.
+The script prints progress for each step and prompts for confirmation when a previous installation is detected (the `500_900_CommunityPatch_CoreINI.big` verification file exists in the destination).
 
 ### Example output
 
@@ -68,15 +68,16 @@ pip install pytest
 pytest test_install_generals_Patch_CoreINI.py -v
 ```
 
-The test suite covers all functions with 18 tests across 7 test classes:
+The test suite covers all functions with 20 tests across 8 test classes:
 
 | Class | Tests | What it covers |
 |---|---|---|
 | `TestDownloadFile` | 4 | Bytes written to disk; 3 network failure modes |
 | `TestExtractZip` | 2 | Valid extraction; corrupt ZIP rejection |
 | `TestResolveDocumentsFolder` | 2 | Registry path; fallback when winreg is absent |
-| `TestConfirmOverwrite` | 3 | "y", "YES" → True; "n" → False |
-| `TestMoveFolder` | 3 | Fresh move; overwrite replaces old; user decline exits |
+| `TestConfirmFileOverwrite` | 3 | "y", "YES" → True; "n" → False |
+| `TestMoveFolder` | 2 | Fresh move; overwrite replaces old |
+| `TestCoreIniAlreadyInstalled` | 3 | Big file present; empty folder; folder absent |
 | `TestVerifyCoreIni` | 2 | File exists → True; file missing → False |
 | `TestCleanupTemporaryFiles` | 2 | Removes paths; handles already-deleted paths |
 

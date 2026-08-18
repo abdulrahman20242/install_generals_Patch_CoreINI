@@ -13,6 +13,7 @@ DOWNLOAD_URL = (
     "GeneralsOnlineGameData.zip"
 )
 
+MOD_FOLDER_NAME = "GeneralsOnlineGameData"
 VERIFY_FILENAME = "500_900_CommunityPatch_CoreINI.big"
 DESTINATION_FOLDER = "Command and Conquer Generals Zero Hour Data"
 
@@ -50,23 +51,29 @@ def resolve_documents_folder():
         return Path.home() / "Documents"
 
 
-def confirm_overwrite(destination_folder):
+def confirm_file_overwrite():
+    # Message references the mod folder because that is what the user sees on
+    # disk; mentioning the internal .big file would be confusing at this level.
     user_input = input(
-        f"'{destination_folder.name}' already exists. "
-        "Overwrite it? (y/n): "
+        f"An existing '{MOD_FOLDER_NAME}' installation was found. "
+        "Replace it? (y/n): "
     )
     return user_input.strip().lower() in ("y", "yes")
 
 
+def core_ini_already_installed():
+    documents_folder = resolve_documents_folder()
+    target_file = documents_folder / DESTINATION_FOLDER / MOD_FOLDER_NAME / VERIFY_FILENAME
+    return target_file.exists()
+
+
+# No prompt here: overwrite decision is made upstream in main().
+# Existing destination is removed so shutil.move places source directly
+# at destination_path instead of nesting it inside the old folder.
 def move_folder(source_folder, destination_parent):
     destination_path = destination_parent / source_folder.name
-
     if destination_path.exists():
-        if not confirm_overwrite(destination_path):
-            print("Aborted by user.")
-            sys.exit(0)
         shutil.rmtree(destination_path)
-
     shutil.move(str(source_folder), str(destination_path))
     return destination_path
 
@@ -92,43 +99,72 @@ def cleanup_temporary_files(zip_path, extraction_folder):
         shutil.rmtree(extraction_folder)
 
 
-def main():
-    temp_folder = Path(tempfile.mkdtemp(prefix="generals_mod_"))
-    zip_path = temp_folder / "GeneralsOnlineGameData.zip"
+def download_archive_or_exit(zip_path):
+    try:
+        download_file(DOWNLOAD_URL, zip_path)
+    except requests.ConnectionError:
+        print("Failed to connect. Check your internet connection and retry.")
+        sys.exit(1)
+    except requests.Timeout:
+        print("Download timed out. Try again later.")
+        sys.exit(1)
+    except requests.HTTPError as exc:
+        print(f"Server returned an error: {exc.response.status_code}")
+        sys.exit(1)
 
+
+def extract_archive_or_exit(zip_path, temp_folder):
+    try:
+        extract_zip(zip_path, temp_folder)
+    except zipfile.BadZipFile:
+        print(
+            "The downloaded file is not a valid ZIP archive. "
+            "Redownload and retry."
+        )
+        sys.exit(1)
+
+    extraction_target = temp_folder / MOD_FOLDER_NAME
+    if not extraction_target.exists():
+        print(
+            "Extracted folder structure unexpected. "
+            "The archive may have been modified upstream."
+        )
+        sys.exit(1)
+
+    return extraction_target
+
+
+def move_installation_or_exit(extraction_target, destination_parent):
+    try:
+        return move_folder(extraction_target, destination_parent)
+    except PermissionError:
+        print(
+            "Permission denied. Close any application using the "
+            "target folder and run this script as Administrator."
+        )
+        sys.exit(1)
+    except shutil.Error as exc:
+        print(f"Failed to move files: {exc}")
+        sys.exit(1)
+
+
+def confirm_existing_installation():
+    print("Checking existing installation...")
+    if not core_ini_already_installed():
+        return
+    if not confirm_file_overwrite():
+        print("Skipped. Existing installation kept.")
+        sys.exit(0)
+    print("Replacing existing installation...")
+
+
+def run_installation_pipeline(temp_folder, zip_path):
     try:
         print("Step 1/5: Downloading mod archive...")
-        try:
-            download_file(DOWNLOAD_URL, zip_path)
-        except requests.ConnectionError:
-            print(
-                "Failed to connect. Check your internet connection and retry."
-            )
-            sys.exit(1)
-        except requests.Timeout:
-            print("Download timed out. Try again later.")
-            sys.exit(1)
-        except requests.HTTPError as exc:
-            print(f"Server returned an error: {exc.response.status_code}")
-            sys.exit(1)
+        download_archive_or_exit(zip_path)
 
         print("Step 2/5: Extracting archive...")
-        try:
-            extract_zip(zip_path, temp_folder)
-        except zipfile.BadZipFile:
-            print(
-                "The downloaded file is not a valid ZIP archive. "
-                "Redownload and retry."
-            )
-            sys.exit(1)
-
-        extraction_target = temp_folder / "GeneralsOnlineGameData"
-        if not extraction_target.exists():
-            print(
-                "Extracted folder structure unexpected. "
-                "The archive may have been modified upstream."
-            )
-            sys.exit(1)
+        extraction_target = extract_archive_or_exit(zip_path, temp_folder)
 
         print("Step 3/5: Resolving destination path...")
         documents_folder = resolve_documents_folder()
@@ -136,17 +172,9 @@ def main():
         destination_parent.mkdir(parents=True, exist_ok=True)
 
         print("Step 4/5: Moving mod files to Documents...")
-        try:
-            installed_path = move_folder(extraction_target, destination_parent)
-        except PermissionError:
-            print(
-                "Permission denied. Close any application using the "
-                "target folder and run this script as Administrator."
-            )
-            sys.exit(1)
-        except shutil.Error as exc:
-            print(f"Failed to move files: {exc}")
-            sys.exit(1)
+        installed_path = move_installation_or_exit(
+            extraction_target, destination_parent
+        )
 
         print("Step 5/5: Verifying installation...")
         if not verify_core_ini(installed_path):
@@ -155,6 +183,13 @@ def main():
         print("Done.")
     finally:
         cleanup_temporary_files(zip_path, temp_folder)
+
+
+def main():
+    confirm_existing_installation()
+    temp_folder = Path(tempfile.mkdtemp(prefix="generals_mod_"))
+    zip_path = temp_folder / f"{MOD_FOLDER_NAME}.zip"
+    run_installation_pipeline(temp_folder, zip_path)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 import requests
 
-import install_generals_mod as mod
+import install_generals_Patch_CoreINI as mod
 
 
 def _build_fake_response(content=b"data"):
@@ -27,7 +27,7 @@ def fake_zip(tmp_path):
     text_file.write_text("mod content")
 
     with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.write(text_file, "GeneralsOnlineGameData/hello.txt")
+        archive.write(text_file, f"{mod.MOD_FOLDER_NAME}/hello.txt")
 
     return zip_path
 
@@ -63,7 +63,7 @@ class TestExtractZip:
     def test_creates_inner_folder_with_files(self, tmp_path, fake_zip):
         mod.extract_zip(fake_zip, tmp_path)
 
-        extracted = tmp_path / "GeneralsOnlineGameData" / "hello.txt"
+        extracted = tmp_path / mod.MOD_FOLDER_NAME / "hello.txt"
         assert extracted.read_text() == "mod content"
 
     def test_raises_on_corrupt_zip(self, tmp_path):
@@ -86,14 +86,6 @@ class _FakeRegistryKey:
 
     def QueryValueEx(self, _subkey):
         return (self._path, 0)
-
-
-class _FakeWinreg:
-    HKEY_CURRENT_USER = 0
-
-    @staticmethod
-    def OpenKey(_key, _subkey, **_kwargs):
-        raise NotImplementedError("OpenKey is called via the real winreg path")
 
 
 class TestResolveDocumentsFolder:
@@ -122,23 +114,24 @@ class TestResolveDocumentsFolder:
         assert result == Path(fake_path)
 
 
-class TestConfirmOverwrite:
-    def test_returns_true_for_yes(self):
-        with patch("builtins.input", return_value="y"):
-            assert mod.confirm_overwrite(Path("test")) is True
-
-    def test_returns_true_for_yes_uppercase(self):
-        with patch("builtins.input", return_value="YES"):
-            assert mod.confirm_overwrite(Path("test")) is True
-
-    def test_returns_false_for_no(self):
-        with patch("builtins.input", return_value="n"):
-            assert mod.confirm_overwrite(Path("test")) is False
+class TestConfirmFileOverwrite:
+    @pytest.mark.parametrize(
+        ("user_input", "expected"),
+        [
+            ("y", True),
+            ("YES", True),
+            ("n", False),
+        ],
+        ids=["lowercase_yes", "uppercase_yes", "lowercase_no"],
+    )
+    def test_accepts_yes_rejects_no(self, user_input, expected):
+        with patch("builtins.input", return_value=user_input):
+            assert mod.confirm_file_overwrite() is expected
 
 
 class TestMoveFolder:
     def test_moves_folder_to_parent(self, tmp_path):
-        source = tmp_path / "src" / "GeneralsOnlineGameData"
+        source = tmp_path / "src" / mod.MOD_FOLDER_NAME
         source.mkdir(parents=True)
         (source / "file.txt").write_text("data")
         destination_parent = tmp_path / "dest"
@@ -146,38 +139,58 @@ class TestMoveFolder:
 
         result = mod.move_folder(source, destination_parent)
 
-        assert result == destination_parent / "GeneralsOnlineGameData"
+        assert result == destination_parent / mod.MOD_FOLDER_NAME
         assert (result / "file.txt").read_text() == "data"
         assert not source.exists()
 
-    def test_removes_existing_destination_on_confirm(self, tmp_path):
-        source = tmp_path / "src" / "GeneralsOnlineGameData"
+    def test_removes_existing_destination_before_move(self, tmp_path):
+        source = tmp_path / "src" / mod.MOD_FOLDER_NAME
         source.mkdir(parents=True)
-        (source / "new.txt").write_text("new data")
+        (source / "new_file.txt").write_text("new data")
 
         destination_parent = tmp_path / "dest"
         destination_parent.mkdir()
-        existing = destination_parent / "GeneralsOnlineGameData"
-        existing.mkdir()
-        (existing / "old.txt").write_text("old data")
+        old_dest = destination_parent / mod.MOD_FOLDER_NAME
+        old_dest.mkdir()
+        (old_dest / "old_file.txt").write_text("old data")
 
-        with patch.object(mod, "confirm_overwrite", return_value=True):
-            result = mod.move_folder(source, destination_parent)
+        result = mod.move_folder(source, destination_parent)
 
-        assert (result / "new.txt").read_text() == "new data"
-        assert not (result / "old.txt").exists()
+        assert result == old_dest
+        assert (result / "new_file.txt").read_text() == "new data"
+        assert not (result / "old_file.txt").exists()
 
-    def test_aborts_when_user_declines_overwrite(self, tmp_path):
-        source = tmp_path / "src" / "GeneralsOnlineGameData"
-        source.mkdir(parents=True)
 
-        destination_parent = tmp_path / "dest"
-        destination_parent.mkdir()
-        (destination_parent / "GeneralsOnlineGameData").mkdir()
+class TestCoreIniAlreadyInstalled:
+    @patch.object(mod, "resolve_documents_folder")
+    def test_returns_true_when_big_file_present(self, mock_resolve, tmp_path):
+        big_file = (
+            tmp_path / mod.DESTINATION_FOLDER
+            / mod.MOD_FOLDER_NAME / mod.VERIFY_FILENAME
+        )
+        big_file.parent.mkdir(parents=True)
+        big_file.write_text("binary")
 
-        with patch.object(mod, "confirm_overwrite", return_value=False):
-            with pytest.raises(SystemExit, match="0"):
-                mod.move_folder(source, destination_parent)
+        mock_resolve.return_value = tmp_path
+
+        assert mod.core_ini_already_installed() is True
+
+    @patch.object(mod, "resolve_documents_folder")
+    def test_returns_false_when_folder_empty(self, mock_resolve, tmp_path):
+        mod_folder = (
+            tmp_path / mod.DESTINATION_FOLDER / mod.MOD_FOLDER_NAME
+        )
+        mod_folder.mkdir(parents=True)
+
+        mock_resolve.return_value = tmp_path
+
+        assert mod.core_ini_already_installed() is False
+
+    @patch.object(mod, "resolve_documents_folder")
+    def test_returns_false_when_folder_absent(self, mock_resolve, tmp_path):
+        mock_resolve.return_value = tmp_path
+
+        assert mod.core_ini_already_installed() is False
 
 
 class TestVerifyCoreIni:
