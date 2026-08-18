@@ -46,8 +46,6 @@ The executable will be in `dist\GeneralsPatchInstaller.exe`.
 | `--onefile` | Bundle everything into a single `.exe` |
 | `--name NAME` | Set the output file name |
 | `--icon=FILE.ico` | Add a custom icon to the executable |
-| `--windowed` | Hide the console window (for GUI apps) |
-| `--add-data "src;dest"` | Include extra files (data, configs, etc.) in the bundle |
 
 Example with an icon:
 
