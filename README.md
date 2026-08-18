@@ -1,6 +1,6 @@
 # Generals Online — Community Patch Installer
 
-Automated installer for the Command & Conquer Generals Zero Hour community-modified INI files. Downloads the archive from GitHub, extracts it, and installs it into the correct Documents path on Windows.
+Automated installer for the Command & Conquer Generals Zero Hour community-modified INI files. Downloads `GeneralsOnlineGameData.zip` from the upstream ReizanTech repository, extracts it, and installs it into the correct Documents path on Windows.
 
 ## Installation
 
@@ -55,7 +55,7 @@ pyinstaller --onefile --name GeneralsPatchInstaller --icon=app.ico install_gener
 
 ## What it does
 
-1. Downloads `GeneralsOnlineGameData.zip` from the GitHub release
+1. Downloads `GeneralsOnlineGameData.zip` from the upstream ReizanTech repository
 2. Extracts the archive to a temporary folder
 3. Detects the current user's Documents path (via Windows registry, with fallback)
 4. Moves the extracted `GeneralsOnlineGameData` folder to:
@@ -67,7 +67,7 @@ pyinstaller --onefile --name GeneralsPatchInstaller --icon=app.ico install_gener
 
 ## Requirements
 
-- **Python 3.10+**
+- **Python 3.8+** (production code; tests require 3.10+ for parenthesized context managers)
 - **Windows** (Documents path resolved via `winreg` with `Path.home() / "Documents"` fallback)
 - **Internet connection** for the initial download
 
@@ -98,6 +98,7 @@ Done.
 | `BadZipFile` | The downloaded file is not a valid ZIP archive. | Corrupted download |
 | Unexpected structure | Extracted folder structure unexpected. | Archive contents changed upstream |
 | `PermissionError` | Permission denied. Close any application using the target folder and run this script as Administrator. | Folder locked by another process |
+| `shutil.Error` | Failed to move files: `<details>` | Filesystem error during move (e.g. cross-device link, open handles) |
 | Missing verification file | `❌ Error: '500_900_CommunityPatch_CoreINI.big' not found` | Incomplete extraction or corrupted archive |
 
 Temporary files are always cleaned up, even when the script exits with an error.
@@ -108,16 +109,20 @@ Temporary files are always cleaned up, even when the script exits with an error.
 pytest test_install_generals_Patch_CoreINI.py -v
 ```
 
-The test suite covers all functions with 20 tests across 8 test classes:
+The test suite covers all functions with 33 tests across 12 test classes:
 
 | Class | Tests | What it covers |
 |---|---|---|
 | `TestDownloadFile` | 4 | Bytes written to disk; 3 network failure modes |
+| `TestDownloadArchiveOrExit` | 3 | ConnectionError, Timeout, HTTPError all trigger `sys.exit(1)` |
 | `TestExtractZip` | 2 | Valid extraction; corrupt ZIP rejection |
-| `TestResolveDocumentsFolder` | 2 | Registry path; fallback when winreg is absent |
+| `TestExtractArchiveOrExit` | 3 | BadZipFile, missing subfolder, success returns path |
+| `TestResolveDocumentsFolder` | 3 | Registry path; fallback when winreg absent; fallback when registry key missing |
 | `TestConfirmFileOverwrite` | 3 | "y", "YES" → True; "n" → False |
 | `TestMoveFolder` | 2 | Fresh move; overwrite replaces old |
+| `TestMoveInstallationOrExit` | 3 | PermissionError, shutil.Error trigger `sys.exit(1)`; success returns path |
 | `TestCoreIniAlreadyInstalled` | 3 | Big file present; empty folder; folder absent |
+| `TestConfirmExistingInstallation` | 3 | No prompt when not installed; continues on confirm; exits on decline |
 | `TestVerifyCoreIni` | 2 | File exists → True; file missing → False |
 | `TestCleanupTemporaryFiles` | 2 | Removes paths; handles already-deleted paths |
 
